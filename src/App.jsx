@@ -9,17 +9,18 @@ function cleanLine(s){
   s = s.replace(/[\u200E\u200F\u202A-\u202E]/g,'')
   s = s.replace(/[©#@*+=~^`"“”'’\[\]\(\)<>]/g,' ')
   s = s.replace(/[|،:؛•·]/g,' | ')
-  s = s.replace(/[^\u0600-\u06FF0-9A-Za-z\-\|\s]/g,' ')
-  s = s.replace(/\s+/g,' ').trim()
+  s = s.replace(/[^\u0600-\u06FF0-9A-Za-z\\-\\|\\s]/g,' ')
+  s = s.replace(/\\s+/g,' ').trim()
   return s
 }
 function normalizeCodeToken(tok){
   if(!tok) return ''
   let t = String(tok).trim()
+  // إصلاحات أكواد OCR
   t = t.replace(/[Oo]/g,'0').replace(/[Il]/g,'1')
-  t = t.toUpperCase().replace(/\s+/g,'').replace(/[^A-Z0-9\-]/g,'')
+  t = t.toUpperCase().replace(/\\s+/g,'').replace(/[^A-Z0-9\\-]/g,'')
   if(/^(DAT|D4T|D41|DAI)$/i.test(t)) return 'DA-1'
-  const m = t.match(/^([A-Z]{1,3})-?(\d{1,4})$/)
+  const m = t.match(/^([A-Z]{1,3})-?(\\d{1,4})$/)
   if(m) return m[1] + '-' + m[2]
   return t
 }
@@ -43,7 +44,7 @@ export default function App(){
     localStorage.setItem('theme', isDark ? 'dark' : 'light')
   }
 
-  function onFileChange(e){ const f = e.target.files?.[0]; if(f) runOCR(f) }
+  function onFileChange(e){ const f=e.target.files?.[0]; if(f) runOCR(f) }
 
   useEffect(()=>{
     function onPaste(e){
@@ -51,8 +52,7 @@ export default function App(){
       for(const it of items){
         if(it.type?.startsWith('image/')){
           const f = it.getAsFile()
-          runOCR(f)
-          e.preventDefault(); break
+          runOCR(f); e.preventDefault(); break
         }
       }
     }
@@ -108,7 +108,7 @@ export default function App(){
       const lines = await ocrExtract(pre)
       const parsed = []
       for(const ln of lines){
-        if(!/[\u0600-\u06FF\u0621-\u064A]/.test(ln) && !/[A-Za-z0-9]/.test(ln)) continue
+        if(!/[\\u0600-\\u06FF\\u0621-\\u064A]/.test(ln) && !/[A-Za-z0-9]/.test(ln)) continue
         const tok = ln.split(' ')[0]
         const code = normalizeCodeToken(tok)
         const rest = ln.replace(tok,'').trim()
@@ -118,13 +118,14 @@ export default function App(){
         else if(lower.includes('خارج')) status='خارج الخدمة'
         parsed.push({ name: rest, code, status, location: '' })
       }
+      // إزالة التكرار (اسم+كود)
       const seen = new Set(); const uniq = []
       for(const p of parsed){
-        const key = (p.code + '|' + p.name).trim()
+        const key=(p.code+'|'+p.name).trim()
         if(!seen.has(key)){ seen.add(key); uniq.push(p) }
       }
       setUnits(uniq)
-      setToast( uniq.length ? 'تم استخراج القائمة' : 'لم يُستخرج أي عناصر' )
+      setToast(uniq.length? 'تم استخراج القائمة' : 'لم يُستخرج أي عناصر')
       setTimeout(()=>setToast(''),2000)
     }catch(e){
       console.error(e)
@@ -137,15 +138,21 @@ export default function App(){
   function setUnit(i, field, value){
     const cp=[...units]; cp[i][field]=value; setUnits(cp)
   }
-  function addUnit(){ setUnits([...units, {name:'', code:'', status:'في الميدان', location: ''}]) }
+  function addUnit(){ setUnits([...units, {name:'', code:'', status:'في الميدان', location:''}]) }
   function removeUnit(i){ const cp=[...units]; cp.splice(i,1); setUnits(cp) }
 
   function generate(){
-    if(!recipient.trim() || !deputy.trim()){ alert('الرجاء كتابة المستلم والنائب (الاسم + الكود)'); return }
+    if(!recipient.trim() || !deputy.trim()){
+      alert('الرجاء كتابة المستلم والنائب (الاسم + الكود)'); return
+    }
     const recName = recipient.split('|')[0].trim()
-    const filtered = units.filter(u => (u.name.trim() || u.code.trim())).filter(u => u.name.trim() !== recName)
+    const filtered = units
+      .filter(u => (u.name.trim() || u.code.trim()))
+      .filter(u => u.name.trim() !== recName)
+
     const field = filtered.filter(u => u.status !== 'خارج الخدمة')
     const oos = filtered.filter(u => u.status === 'خارج الخدمة')
+
     const formatRow = (u) => {
       const base = `${u.name || ''}${u.name && u.code ? ' | ' + u.code : (u.code ? ' | ' + u.code : '')}`.trim()
       const annotations = []
@@ -155,8 +162,12 @@ export default function App(){
       if(annotations.length && !base) return `(${annotations.join(') - (')})`
       return base
     }
+
     const linesField = field.map(formatRow).join('\\n')
-    const linesOOS = oos.map(u => `${u.name ? u.name : ''}${u.code ? ' | ' + u.code : ''}${u.location ? ' (' + u.location + ')' : ''}`).join('\\n')
+    const linesOOS = oos
+      .map(u => `${u.name ? u.name : ''}${u.code ? ' | ' + u.code : ''}${u.location ? ' (' + u.location + ')' : ''}`)
+      .join('\\n')
+
     const out = `📌 استلام العمليات 📌
 
 المستلم : ${recipient}
@@ -188,11 +199,12 @@ ${linesOOS ? linesOOS + '\\n' : ''}
       <div className="title">تحديث مركز العمليات للصحة</div>
 
       <div className="toolbar">
-        <button className="btn" onClick={toggleTheme}>وضع داكن/فاتح</button>
+        <button className="btn-toggle" onClick={toggleTheme}>وضع داكن/فاتح</button>
         <label className="btn violet" style={{cursor:'pointer'}}>
           رفع / لصق صورة
           <input type="file" accept="image/*" style={{display:'none'}} onChange={onFileChange} />
         </label>
+        <button className="btn" onClick={copyFinal}>نسخ النتيجة</button>
       </div>
 
       <div className="card grid">
@@ -201,10 +213,12 @@ ${linesOOS ? linesOOS + '\\n' : ''}
             <div>
               <label className="label">المستلم</label>
               <input className="input" placeholder="الاسم | الكود" value={recipient} onChange={e=>setRecipient(e.target.value)} />
+              {!recipient.trim() && <div className="errorText">يجب عليك كتابة الاسم مع كود</div>}
             </div>
             <div>
               <label className="label">النائب</label>
               <input className="input" placeholder="الاسم | الكود" value={deputy} onChange={e=>setDeputy(e.target.value)} />
+              {!deputy.trim() && <div className="errorText">يجب عليك كتابة الاسم مع كود</div>}
             </div>
           </div>
 
@@ -238,7 +252,6 @@ ${linesOOS ? linesOOS + '\\n' : ''}
 
           <div style={{marginTop:12, display:'flex', gap:10}}>
             <button className="btn violet" onClick={generate}>{busy ? 'جاري التحليل…' : 'توليد النص النهائي'}</button>
-            <button className="btn" onClick={copyFinal}>نسخ النتيجة</button>
           </div>
         </div>
 
@@ -250,6 +263,7 @@ ${linesOOS ? linesOOS + '\\n' : ''}
           </div>
         </div>
       </div>
+
       {toast && <div className="toast">{toast}</div>}
     </div>
   )
